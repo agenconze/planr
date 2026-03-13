@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Read(//usr/local/lib/**)",
+      "Bash(echo PATH=$PATH)"
+    ]
+  }
+}
