@@ -1,9 +1,15 @@
-import { useState, useRef, useCallback, type ChangeEvent, type DragEvent } from 'react';
+import { useState, useRef, useMemo, useCallback, type ChangeEvent, type DragEvent } from 'react';
 import {
   runSerpClusteringPipeline,
   type BuildOptions,
   type ContentPlanRow,
 } from './pipeline';
+import {
+  computeStrategicInsights,
+  toStrategicInputs,
+  toPillarCsv,
+  type StrategicInsights,
+} from './strategicInsights';
 
 type PipelineResult = ReturnType<typeof runSerpClusteringPipeline>;
 
@@ -382,6 +388,152 @@ function InsightsSection({ rows }: { rows: ContentPlanRow[] }) {
 }
 
 // ---------------------------------------------------------------------------
+// Strategic Briefing Section
+// ---------------------------------------------------------------------------
+
+function StrategicBriefingSection({ insights }: { insights: StrategicInsights }) {
+  const [expandedPillarId, setExpandedPillarId] = useState<string | null>(null);
+  const strongPillars = insights.strongPillars;
+  const emergingTopics = insights.emergingTopics;
+
+  return (
+    <section className="strategic-panel">
+      <div className="strategic-header">
+        <div>
+          <h3>Content Architecture</h3>
+          <p>Families are built on all clusters, then ranked with a BLOG lens.</p>
+        </div>
+        <button
+          className="btn-export-secondary"
+          onClick={() => downloadCsv(toPillarCsv(insights), `pillar-opportunities-${slug()}.csv`)}
+        >
+          ↓ Export Pillar CSV
+        </button>
+      </div>
+
+      <div className="strategic-summary-grid">
+        <div className="strategic-summary-card">
+          <div className="strategic-kpi-value">{insights.planSummary.totalClusters.toLocaleString()}</div>
+          <div className="strategic-kpi-label">Total Clusters</div>
+        </div>
+        <div className="strategic-summary-card">
+          <div className="strategic-kpi-value">
+            {insights.planSummary.totalAddressableDemand.toLocaleString()}
+          </div>
+          <div className="strategic-kpi-label">Total Addressable Search Demand</div>
+        </div>
+        <div className="strategic-summary-card">
+          <div className="strategic-kpi-value">{insights.planSummary.strongPillarCount.toLocaleString()}</div>
+          <div className="strategic-kpi-label">Strong Pillars</div>
+        </div>
+        <div className="strategic-summary-card">
+          <div className="strategic-kpi-value">{insights.planSummary.emergingTopicCount.toLocaleString()}</div>
+          <div className="strategic-kpi-label">Emerging Topics</div>
+        </div>
+        <div className="strategic-summary-card">
+          <div className="strategic-kpi-value">{insights.planSummary.standaloneCount.toLocaleString()}</div>
+          <div className="strategic-kpi-label">Standalone Topics</div>
+        </div>
+      </div>
+
+      <div className="strategic-grid">
+        <div className="strategic-card strategic-card-pillar">
+          <h4>Strong Pillars</h4>
+          {strongPillars.length === 0 ? (
+            <p className="muted">No strong pillars detected with the current quality gate.</p>
+          ) : (
+            <div className="strategic-list">
+              {strongPillars.map((pillar) => (
+                <div key={pillar.pillarId} className="strategic-list-item strategic-list-item-pillar">
+                  <div>
+                    <div className="strategic-title">{pillar.pillarKeyword}</div>
+                    <div className="strategic-meta">
+                      Total pillar opportunity: {pillar.totalPillarVolume.toLocaleString()}
+                    </div>
+                    <div className="strategic-meta">
+                      Supporting articles: {pillar.supportingArticlesCount}
+                    </div>
+                    <div className="strategic-meta">
+                      Family size: {pillar.familySize}
+                    </div>
+                    <button
+                      className="btn-link"
+                      onClick={() =>
+                        setExpandedPillarId((current) =>
+                          current === pillar.pillarId ? null : pillar.pillarId,
+                        )
+                      }
+                    >
+                      {expandedPillarId === pillar.pillarId
+                        ? 'Hide supporting articles'
+                        : 'Show supporting articles'}
+                    </button>
+                    {expandedPillarId === pillar.pillarId && (
+                      pillar.supportingArticles.length > 0 ? (
+                        <ul className="supporting-list">
+                          {pillar.supportingArticles.map((article) => (
+                            <li key={article.clusterId} className={article.intentType === 'BLOG' ? '' : 'non-blog'}>
+                              {article.mainKeyword}
+                              <span>{article.volume.toLocaleString()}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="strategic-meta">No supporting articles detected.</div>
+                      )
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="strategic-card">
+          <h4>Emerging Topics</h4>
+          {emergingTopics.length === 0 ? (
+            <p className="muted">No emerging topics detected.</p>
+          ) : (
+            <div className="strategic-list">
+              {emergingTopics.map((topic) => (
+                <div key={topic.topicId} className="strategic-list-item">
+                  <div>
+                    <div className="strategic-title">{topic.candidateKeyword}</div>
+                    <div className="strategic-meta">
+                      Opportunity: {topic.totalTopicOpportunity.toLocaleString()} • Family size: {topic.familySize}
+                    </div>
+                  </div>
+                  <div className="strategic-volume">{topic.supportingArticlesCount} supports</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <details className="strategic-secondary">
+        <summary>Standalone topics (low priority)</summary>
+        {insights.standaloneTopics.length === 0 ? (
+          <p className="muted">No standalone topics detected.</p>
+        ) : (
+          <div className="strategic-list">
+            {insights.standaloneTopics.map((topic) => (
+              <div key={topic.clusterId} className="strategic-list-item">
+                <div>
+                  <div className="strategic-title">{topic.mainKeyword}</div>
+                  <div className="strategic-meta">{topic.intentType}</div>
+                </div>
+                <div className="strategic-volume">{topic.volume.toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </details>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main App
 // ---------------------------------------------------------------------------
 
@@ -395,6 +547,9 @@ const DEFAULT_OPTIONS = {
   clientDomain: '',
 } satisfies BuildOptions;
 
+type ResultTab = 'CONTENT_PLAN' | 'CONTENT_ARCHITECTURE' | 'SEO_FORECASTING';
+const ENABLE_CONTENT_ARCHITECTURE_TAB = false;
+
 export default function App() {
   const [csvText, setCsvText]       = useState('');
   const [fileName, setFileName]     = useState('');
@@ -402,7 +557,25 @@ export default function App() {
   const [options, setOptions]       = useState(DEFAULT_OPTIONS);
   const [result, setResult]         = useState<PipelineResult | null>(null);
   const [isRunning, setIsRunning]   = useState(false);
+  const [activeTab, setActiveTab]   = useState<ResultTab>('CONTENT_PLAN');
+  const [currentCtrPct, setCurrentCtrPct] = useState(0.7);
+  const [top10CtrPct, setTop10CtrPct]     = useState(2);
+  const [top5CtrPct, setTop5CtrPct]       = useState(5);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const strategicInsights = useMemo(
+    () =>
+      ENABLE_CONTENT_ARCHITECTURE_TAB && result
+        ? computeStrategicInsights(toStrategicInputs(result.contentPlan))
+        : null,
+    [result],
+  );
+
+  const clampCtr = (value: number) => Math.max(0, Math.min(20, value));
+  const parseCtrInput = (value: string) => {
+    if (value.trim() === '') return 0;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? clampCtr(parsed) : 0;
+  };
 
   // -- File loading ----------------------------------------------------------
 
@@ -441,6 +614,7 @@ export default function App() {
       try {
         const r = runSerpClusteringPipeline(csvText, options, { addBom: true });
         setResult(r);
+        setActiveTab('CONTENT_PLAN');
       } catch (err) {
         alert(`Pipeline error: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
@@ -450,6 +624,60 @@ export default function App() {
   };
 
   // ---- Render --------------------------------------------------------------
+
+  const totalContentPlanVolume = result
+    ? result.contentPlan.reduce((sum, row) => sum + row.mainKeywordVolume, 0)
+    : 0;
+  const weightedCtrPct = (top10CtrPct + top5CtrPct) / 2;
+  const currentCtrDecimal = currentCtrPct / 100;
+  const top10CtrDecimal = top10CtrPct / 100;
+  const weightedCtrDecimal = weightedCtrPct / 100;
+  const top5CtrDecimal = top5CtrPct / 100;
+  const currentTraffic = Math.round(totalContentPlanVolume * currentCtrDecimal);
+  const top10Traffic = Math.round(totalContentPlanVolume * top10CtrDecimal);
+  const weightedTraffic = Math.round(totalContentPlanVolume * weightedCtrDecimal);
+  const top5Traffic = Math.round(totalContentPlanVolume * top5CtrDecimal);
+
+  const rampMonths = [3, 6, 9, 12] as const;
+  const rampFactors = [0.3, 0.6, 0.8, 1] as const;
+
+  const scenarios = [
+    { key: 'current', label: 'Current CTR', ctrPct: currentCtrPct, traffic: currentTraffic, color: '#64748b' },
+    { key: 'top10', label: 'Top 10', ctrPct: top10CtrPct, traffic: top10Traffic, color: '#d97706' },
+    { key: 'weighted', label: 'Weighted', ctrPct: weightedCtrPct, traffic: weightedTraffic, color: '#7c3aed' },
+    { key: 'top5', label: 'Top 5', ctrPct: top5CtrPct, traffic: top5Traffic, color: '#059669' },
+  ] as const;
+
+  const scenarioCurves = scenarios.map((scenario) => ({
+    ...scenario,
+    points: rampMonths.map((month, idx) => ({
+      month,
+      factor: rampFactors[idx],
+      traffic: Math.round(scenario.traffic * rampFactors[idx]),
+    })),
+  }));
+
+  const maxTraffic = Math.max(
+    1,
+    ...scenarioCurves.flatMap((curve) => curve.points.map((point) => point.traffic)),
+  );
+
+  const chartWidth = 860;
+  const chartHeight = 360;
+  const chartMargin = { top: 22, right: 22, bottom: 56, left: 80 };
+  const plotWidth = chartWidth - chartMargin.left - chartMargin.right;
+  const plotHeight = chartHeight - chartMargin.top - chartMargin.bottom;
+
+  const xForIndex = (idx: number) =>
+    chartMargin.left + (idx / (rampMonths.length - 1)) * plotWidth;
+  const yForTraffic = (value: number) =>
+    chartMargin.top + (1 - value / maxTraffic) * plotHeight;
+
+  const yTicks = Array.from({ length: 5 }, (_, idx) => {
+    const value = Math.round((maxTraffic * (4 - idx)) / 4);
+    const y = chartMargin.top + (plotHeight * idx) / 4;
+    return { value, y };
+  });
 
   return (
     <div className="app">
@@ -512,57 +740,28 @@ export default function App() {
             </span>
           </div>
 
-          {/* SERP Depth */}
-          <div className="control-group">
-            <span className="control-label">SERP Depth</span>
-            <div className="serp-depth-options">
-              <label className={`depth-option ${options.maxPosition === 10 ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="serpDepth"
-                  value="10"
-                  checked={options.maxPosition === 10}
-                  onChange={() => setOptions((o) => ({ ...o, maxPosition: 10 }))}
-                />
-                Top 10
-              </label>
-              <label className={`depth-option ${options.maxPosition === 5 ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="serpDepth"
-                  value="5"
-                  checked={options.maxPosition === 5}
-                  onChange={() => setOptions((o) => ({ ...o, maxPosition: 5 }))}
-                />
-                Top 5
-              </label>
-            </div>
-            <span className="control-hint">
-              Top 10 = broader comparison, more clusters. Top 5 = stricter, cleaner intent signal.
-            </span>
-          </div>
-
           {/* Overlap threshold */}
           <div className="control-group">
-            <label className="control-label" htmlFor="overlap">
+            <span className="control-label">
               Overlap Threshold
               <span className="threshold-badge">{options.overlapThreshold}</span>
-            </label>
-            <input
-              id="overlap"
-              type="range"
-              min={1} max={10} step={1}
-              value={options.overlapThreshold}
-              onChange={(e) =>
-                setOptions((o) => ({ ...o, overlapThreshold: Number(e.target.value) }))
-              }
-            />
+            </span>
+            <div className="serp-depth-options">
+              {[2, 3, 4].map((value) => (
+                <label key={value} className={`depth-option ${options.overlapThreshold === value ? 'active' : ''}`}>
+                  <input
+                    type="radio"
+                    name="overlapThreshold"
+                    value={value}
+                    checked={options.overlapThreshold === value}
+                    onChange={() => setOptions((o) => ({ ...o, overlapThreshold: value }))}
+                  />
+                  {value}
+                </label>
+              ))}
+            </div>
             <span className="control-hint">
-              {options.overlapThreshold <= 3
-                ? 'Flexible — broader clusters, more groupings'
-                : options.overlapThreshold === 4
-                ? 'Balanced — cleaner intent, fewer mixed clusters'
-                : 'Strict — tight clusters, more isolated keywords'}
+              SERP depth is fixed to Top 10. Choose a controlled overlap level: 2, 3, or 4.
             </span>
           </div>
 
@@ -618,11 +817,251 @@ export default function App() {
               </button>
             </div>
 
-            {/* Insights */}
-            <InsightsSection rows={result.contentPlan} />
+            <div className="results-tabs" role="tablist" aria-label="Result views">
+              <button
+                className={`tab-btn ${activeTab === 'CONTENT_PLAN' ? 'active' : ''}`}
+                onClick={() => setActiveTab('CONTENT_PLAN')}
+              >
+                Content Plan
+              </button>
+              {ENABLE_CONTENT_ARCHITECTURE_TAB && (
+                <button
+                  className={`tab-btn ${activeTab === 'CONTENT_ARCHITECTURE' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('CONTENT_ARCHITECTURE')}
+                >
+                  Content Architecture
+                </button>
+              )}
+              <button
+                className={`tab-btn ${activeTab === 'SEO_FORECASTING' ? 'active' : ''}`}
+                onClick={() => setActiveTab('SEO_FORECASTING')}
+              >
+                SEO Forecasting
+              </button>
+            </div>
 
-            {/* Table */}
-            <ContentPlanTable rows={result.contentPlan} />
+            {activeTab === 'CONTENT_PLAN' && (
+              <>
+                <InsightsSection rows={result.contentPlan} />
+                <ContentPlanTable rows={result.contentPlan} />
+              </>
+            )}
+
+            {ENABLE_CONTENT_ARCHITECTURE_TAB && activeTab === 'CONTENT_ARCHITECTURE' && (
+              strategicInsights ? (
+                <StrategicBriefingSection insights={strategicInsights} />
+              ) : (
+                <div className="empty-state">
+                  <p>No BLOG clusters detected for content architecture.</p>
+                </div>
+              )
+            )}
+
+            {activeTab === 'SEO_FORECASTING' && (
+              <div className="forecasting-panel">
+                <section className="forecast-section">
+                  <h3 className="forecast-section-title">Inputs &amp; assumptions</h3>
+                  <div className="forecast-assumptions-grid">
+                    <div className="forecast-assumption-item forecast-assumption-static">
+                      <span className="forecast-assumption-label">Total content plan demand</span>
+                      <span className="forecast-assumption-value">{totalContentPlanVolume.toLocaleString()}</span>
+                    </div>
+
+                    <label className="forecast-assumption-item" htmlFor="current-ctr">
+                      <span className="forecast-assumption-label">Current CTR</span>
+                      <div className="forecast-input-wrap">
+                        <input
+                          id="current-ctr"
+                          className="forecast-input"
+                          type="number"
+                          min={0}
+                          max={20}
+                          step={0.1}
+                          value={currentCtrPct}
+                          onChange={(e) => setCurrentCtrPct(parseCtrInput(e.target.value))}
+                        />
+                        <span className="forecast-input-suffix">%</span>
+                      </div>
+                    </label>
+
+                    <label className="forecast-assumption-item" htmlFor="top10-ctr">
+                      <span className="forecast-assumption-label">Top 10 CTR</span>
+                      <div className="forecast-input-wrap">
+                        <input
+                          id="top10-ctr"
+                          className="forecast-input"
+                          type="number"
+                          min={0}
+                          max={20}
+                          step={0.1}
+                          value={top10CtrPct}
+                          onChange={(e) => setTop10CtrPct(parseCtrInput(e.target.value))}
+                        />
+                        <span className="forecast-input-suffix">%</span>
+                      </div>
+                    </label>
+
+                    <div className="forecast-assumption-item forecast-assumption-static">
+                      <span className="forecast-assumption-label">Weighted CTR</span>
+                      <span className="forecast-assumption-value">{weightedCtrPct.toFixed(1)}%</span>
+                    </div>
+
+                    <label className="forecast-assumption-item" htmlFor="top5-ctr">
+                      <span className="forecast-assumption-label">Top 5 CTR</span>
+                      <div className="forecast-input-wrap">
+                        <input
+                          id="top5-ctr"
+                          className="forecast-input"
+                          type="number"
+                          min={0}
+                          max={20}
+                          step={0.1}
+                          value={top5CtrPct}
+                          onChange={(e) => setTop5CtrPct(parseCtrInput(e.target.value))}
+                        />
+                        <span className="forecast-input-suffix">%</span>
+                      </div>
+                    </label>
+
+                    <div className="forecast-assumption-item forecast-assumption-static">
+                      <span className="forecast-assumption-label">Ramp profile</span>
+                      <span className="forecast-assumption-value">30% / 60% / 80% / 100%</span>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="forecast-section">
+                  <h3 className="forecast-section-title">Scenario ramp chart</h3>
+                  <div className="forecast-chart-wrap">
+                    <div className="forecast-legend">
+                      {scenarios.map((scenario) => (
+                        <div key={scenario.key} className="forecast-legend-item">
+                          <span
+                            className="forecast-legend-dot"
+                            style={{ backgroundColor: scenario.color }}
+                            aria-hidden="true"
+                          />
+                          <span>{scenario.label} ({scenario.ctrPct.toFixed(1)}%)</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <svg
+                      className="forecast-chart"
+                      viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                      role="img"
+                      aria-label="Traffic ramp projection chart for Current CTR, Top 10, Weighted, and Top 5 scenarios."
+                    >
+                      {yTicks.map((tick) => (
+                        <g key={tick.y}>
+                          <line
+                            x1={chartMargin.left}
+                            x2={chartWidth - chartMargin.right}
+                            y1={tick.y}
+                            y2={tick.y}
+                            className="forecast-grid-line"
+                          />
+                          <text x={chartMargin.left - 10} y={tick.y + 4} className="forecast-axis-text forecast-axis-text-right">
+                            {tick.value.toLocaleString()}
+                          </text>
+                        </g>
+                      ))}
+
+                      {rampMonths.map((month, idx) => (
+                        <g key={month}>
+                          <line
+                            x1={xForIndex(idx)}
+                            x2={xForIndex(idx)}
+                            y1={chartMargin.top}
+                            y2={chartHeight - chartMargin.bottom}
+                            className="forecast-grid-line forecast-grid-line-vertical"
+                          />
+                          <text
+                            x={xForIndex(idx)}
+                            y={chartHeight - chartMargin.bottom + 18}
+                            className="forecast-axis-text"
+                            textAnchor="middle"
+                          >
+                            {month}
+                          </text>
+                        </g>
+                      ))}
+
+                      <line
+                        x1={chartMargin.left}
+                        x2={chartMargin.left}
+                        y1={chartMargin.top}
+                        y2={chartHeight - chartMargin.bottom}
+                        className="forecast-axis-line"
+                      />
+                      <line
+                        x1={chartMargin.left}
+                        x2={chartWidth - chartMargin.right}
+                        y1={chartHeight - chartMargin.bottom}
+                        y2={chartHeight - chartMargin.bottom}
+                        className="forecast-axis-line"
+                      />
+
+                      {scenarioCurves.map((scenario) => {
+                        const points = scenario.points
+                          .map((point, idx) => `${xForIndex(idx)},${yForTraffic(point.traffic)}`)
+                          .join(' ');
+
+                        return (
+                          <g key={scenario.key}>
+                            <polyline
+                              points={points}
+                              fill="none"
+                              stroke={scenario.color}
+                              strokeWidth="3"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                            {scenario.points.map((point, idx) => (
+                              <circle
+                                key={`${scenario.key}-${point.month}`}
+                                cx={xForIndex(idx)}
+                                cy={yForTraffic(point.traffic)}
+                                r="4.5"
+                                fill={scenario.color}
+                                stroke="#ffffff"
+                                strokeWidth="1.5"
+                              >
+                                <title>
+                                  {`${scenario.label}\nMonth: ${point.month}\nCTR: ${scenario.ctrPct.toFixed(1)}%\nEstimated traffic: ${point.traffic.toLocaleString()}`}
+                                </title>
+                              </circle>
+                            ))}
+                          </g>
+                        );
+                      })}
+
+                      <text
+                        x={(chartMargin.left + (chartWidth - chartMargin.right)) / 2}
+                        y={chartHeight - 10}
+                        className="forecast-axis-label"
+                        textAnchor="middle"
+                      >
+                        Time after content plan is live (months)
+                      </text>
+                      <text
+                        x={18}
+                        y={chartMargin.top + plotHeight / 2}
+                        className="forecast-axis-label"
+                        textAnchor="middle"
+                        transform={`rotate(-90 18 ${chartMargin.top + plotHeight / 2})`}
+                      >
+                        Estimated monthly organic traffic
+                      </text>
+                    </svg>
+                  </div>
+                </section>
+
+                <p className="forecast-note">
+                  Ramp-up projection after content plan is live; not publication cadence modeling.
+                </p>
+              </div>
+            )}
           </section>
         )}
 
